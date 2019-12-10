@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using MvcWithEf.Models;
 
@@ -77,8 +78,15 @@ namespace MvcWithEf.Controllers
             {
                 _context.Department
                 .FromSqlInterpolated(
-                $"EXECUTE dbo.Department_Update{id},{department.Name},{department.Budget},{department.StartDate},{department.InstructorId},{department.RowVersion} ;"
-                ).ToList();
+                $@"select * from Department where DepartmentId = {id};
+                    EXECUTE dbo.Department_Update 
+                    {id},
+                    {department.Name},
+                    {department.Budget},
+                    {department.StartDate},
+                    {department.InstructorId},
+                    {department.RowVersion} ;"
+                ).AsEnumerable().FirstOrDefault();
 
                 //await _context.SaveChangesAsync();
             }
@@ -103,12 +111,19 @@ namespace MvcWithEf.Controllers
         [HttpPost]
         public async Task<ActionResult<Department>> PostDepartment(Department department)
         {
+            Department d =
             _context.Department
                 .FromSqlInterpolated(
-                    $"EXECUTE dbo.Department_Insert @Name = {department.Name},@Budget = {department.Budget},@StartDate = {department.StartDate},@InstructorId = {department.InstructorId} ;"
-                );
+                    $@"select * from Department where DepartmentId = @@identity;
+                        EXECUTE dbo.Department_Insert 
+                            @Name = {department.Name},
+                            @Budget = {department.Budget},
+                            @StartDate = {department.StartDate},
+                            @InstructorId = {department.InstructorId} ;
+                        "
+                ).AsEnumerable().FirstOrDefault();
 
-            return CreatedAtAction("GetDepartment", new { id = department.DepartmentId }, department);
+            return d;
         }
 
         // DELETE: api/Departments/5
@@ -120,16 +135,16 @@ namespace MvcWithEf.Controllers
             {
                return NotFound();
             }
+
             var department = await _context.Department.FindAsync(id);
 
             _context.Department
-                .FromSqlRaw(
-                    $"EXECUTE dbo.Department_Delete @DepartmentID = {0},@RowVersion_Original={1} ;",
-                    id,
-                    department.RowVersion
-                );
+                .FromSqlInterpolated(
+                    $@"select * from Department where DepartmentId = {id};
+                       EXECUTE dbo.Department_Delete @DepartmentID = {id}, 
+                        @RowVersion_Original = {department.RowVersion}; "
+                 ).AsEnumerable().Any();
 
-            
             return department;
         }
 
